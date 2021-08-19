@@ -1,0 +1,16 @@
+PODS:
+  - LabelListView (0.1)
+
+DEPENDENCIES:
+  - LabelListView (from `./`)
+
+EXTERNAL SOURCES:
+  LabelListView:
+    :path: "./"
+
+SPEC CHECKSUMS:
+  LabelListView: fd20001a98d70fc051aea88bedcb17bfe5b1f0b8
+
+PODFILE CHECKSUM: e752620ca09bceb9dd6505b78a10a4c33d7967e4
+
+COCOAPODS: 1.10.1
