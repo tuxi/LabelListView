@@ -7,8 +7,17 @@
 
 import UIKit
 
-public class LabelListView<TagView: Label>: UIView {
+public protocol LabelReusable: UIView {
+    static var reuseIdentifier: String { get }
+}
 
+public protocol LabelListViewDataSource: AnyObject {
+    func labelListView(_ labelListView: LabelListView, labelForItemAt index: Int) -> LabelReusable
+    func numberOfItems(in labelListView: LabelListView) -> Int
+}
+
+/// 一个可复用的自动换行的标签视图（使用自动布局，无需设置高度）
+public class LabelListView: UIView {
     /// 行间距
     public var hSpacing: CGFloat = 10 {
         didSet {
@@ -35,27 +44,33 @@ public class LabelListView<TagView: Label>: UIView {
         }
     }
     
-    /// 加载小格子
-    public var tags: [String] = [] {
-        didSet {
-            setNeedsUpdateConstraints()
-        }
-    }
-    
     /// 在显示的标签
-    private var displayViews = [TagView]()
+    private var displayViews = [LabelReusable]()
     /// 准备复用的标签
-    private var reuseViews = [TagView]()
+    private var reuseViews = [LabelReusable]()
     /// 当content的size改变时，重新布局，以填充标签
     private var sizeObserver: WeakBox<SizeObserver>?
     
     private var contentConstraints = [NSLayoutConstraint]()
     private var labsConstraints = [NSLayoutConstraint]()
+    
+    private var identifiers = [String: AnyClass]()
+    
+    public weak var dataSource: LabelListViewDataSource? {
+        didSet {
+            reloadData()
+        }
+    }
 
     private lazy var contentView: UIView = {
         let view = UIView()
-        view.backgroundColor = .clear
         return view
+    }()
+    
+    lazy var stackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        return stackView
     }()
     
     public override init(frame: CGRect) {
@@ -69,25 +84,40 @@ public class LabelListView<TagView: Label>: UIView {
     }
     
     private func makeUI() {
-        addSubview(contentView)
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        contentConstraints = ["H:|[contentView]|", "V:|[contentView]|"].flatMap {
-            NSLayoutConstraint.constraints(withVisualFormat: $0, options: [], metrics: nil, views: ["contentView": contentView])
+        addSubview(stackView)
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        contentConstraints = ["H:|[stackView]|", "V:|[stackView]|"].flatMap {
+            NSLayoutConstraint.constraints(withVisualFormat: $0, options: [], metrics: nil, views: ["stackView": stackView])
         }
         .activate()
         
+        stackView.addArrangedSubview(contentView)
+        
         updateMyConstraints()
         
-        sizeObserver = WeakBox(box: SizeObserver(target: self.contentView, eventHandler: { [weak self] kayPath in
-            self?.setNeedsUpdateConstraints()
+        sizeObserver = WeakBox(box: SizeObserver(target: self.stackView, eventHandler: { [weak self] kayPath in
+            self?.reloadDataIfNeeded()
         }))
+    }
+    
+    /// 立即刷新数据，并立即布局，适用于数据改变立即更新布局的
+    public func reloadDataIfNeeded() {
+        setNeedsUpdateConstraints()
+        updateConstraintsIfNeeded()
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+    
+    /// 标记需要刷新，不会立即执行
+    public func reloadData() {
+        setNeedsUpdateConstraints()
+        setNeedsLayout()
     }
     
     public override func updateConstraints() {
         super.updateConstraints()
         
-        let contentWidth = self.contentView.frame.size.width
-       
+        let contentWidth = self.stackView.frame.size.width
         if contentWidth <= 0 {
             return
         }
@@ -97,39 +127,37 @@ public class LabelListView<TagView: Label>: UIView {
         // 累计宽度
         var maxX: CGFloat = 0
         // 记录上一个格子
-        var beforeLabel: Label?
+        var lastLabel: UIView?
         
         contentView.removeConstraints(labsConstraints)
         labsConstraints.removeAll()
         
         /// 更新约束
-        
-        for (index, item) in tags.enumerated() {
+        let count = dataSource!.numberOfItems(in: self)
+       
+        for index in 0..<count {
             let label = displayViews[index]
-            label.text = item
-            label.textInsets = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-            
             let labelSize = label.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
             
             label.layer.cornerRadius = labelSize.height * 0.5
             label.backgroundColor = .red
             
-            if let beforeLabel = beforeLabel, (maxX + labelSize.width + hSpacing) > contentWidth {
+            if let lastLabel = lastLabel, (maxX + labelSize.width + hSpacing) > contentWidth {
                 // 换到下一行的第一个
                 labsConstraints.append(contentsOf: [
                     label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                    label.topAnchor.constraint(equalTo: beforeLabel.bottomAnchor, constant: vSpacing),
+                    label.topAnchor.constraint(equalTo: lastLabel.bottomAnchor, constant: vSpacing),
                     // 上一行的最后一个label对其右侧进行约束
-                    beforeLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor)
+                    lastLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor)
                 ])
                 maxX = labelSize.width
             } else {
                 // 继续在这一行
-                if let beforeLabel = beforeLabel {
+                if let lastLabel = lastLabel {
                     // 同一行 第 2, 3, 4...个
                     labsConstraints.append(contentsOf: [
-                        label.leadingAnchor.constraint(equalTo: beforeLabel.trailingAnchor, constant: hSpacing),
-                        label.topAnchor.constraint(equalTo: beforeLabel.topAnchor)
+                        label.leadingAnchor.constraint(equalTo: lastLabel.trailingAnchor, constant: hSpacing),
+                        label.topAnchor.constraint(equalTo: lastLabel.topAnchor)
                     ])
                     maxX += labelSize.width + hSpacing
                 } else {
@@ -141,7 +169,7 @@ public class LabelListView<TagView: Label>: UIView {
                     maxX = labelSize.width
                 }
             }
-            beforeLabel = label
+            lastLabel = label
         }
         
         if let lastLabel = displayViews.last {
@@ -151,23 +179,22 @@ public class LabelListView<TagView: Label>: UIView {
                 lastLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor)
             ])
         }
+        else {
+            // 无内容时，让contentView 压缩为zero，以适应父视图的高度
+            labsConstraints.append(contentsOf: [
+                contentView.heightAnchor.constraint(equalToConstant: 0)
+            ])
+        }
         labsConstraints.activate()
     }
     
     /// 准备复用
     func prepareForReuse() {
-        let labelsCount = tags.count
+        let labelsCount = dataSource!.numberOfItems(in: self)
         let displayCount = displayViews.count
         
-        /// labs数量比views数量多，添加差异
-        if labelsCount > displayCount {
-            let diff = labelsCount - displayCount
-            for _ in 0..<diff {
-                addView(dequeueReuseView())
-            }
-        }
-        else {
-            /// labels数量比views数量少，移除差异
+        /// labels数量比views数量少，移除差异，并加入复用池
+        if labelsCount < displayCount {
             let diff = displayCount - labelsCount
             var rangeViews = displayViews[0..<diff]
             for _ in 0..<diff {
@@ -175,9 +202,15 @@ public class LabelListView<TagView: Label>: UIView {
                 appendReuseView(view)
             }
         }
-        
+
+//        var diff = labelsCount - displayCount
+        for index in 0..<labelsCount {
+            let label = dataSource!.labelListView(self, labelForItemAt: index)
+            addView(label)
+        }
+
         let reuseCount = reuseViews.count
-        print("剩余复用的数量reuseCount: \(reuseCount)")
+        print("待复用的数量reuseCount: \(reuseCount)")
     }
     
     private func updateMyConstraints() {
@@ -200,9 +233,24 @@ public class LabelListView<TagView: Label>: UIView {
     }
 }
 
+public extension LabelListView {
+    func registerLabelClass<T>(ofType type: T.Type) where T: LabelReusable {
+        self.identifiers[T.reuseIdentifier] = type.self
+    }
+}
+
 extension LabelListView {
-    /// 从复用池出列，没有则闯将
-    private func dequeueReuseView() -> TagView {
+    /// 根据index查找一个标签视图，没有则创建
+   public func dequeueReusableLabel<T>(ofType type: T.Type, index: Int) throws -> T where T: LabelReusable {
+        return try dequeueReusableLabel(withIdentifier: T.reuseIdentifier, index: index) as! T
+    }
+    private func dequeueReusableLabel(withIdentifier identifier: String, index: Int) throws -> LabelReusable {
+        
+        if index < displayViews.count {
+            let label = displayViews[index]
+            return label
+        }
+        
         // 取出一个复用的view，复用池不够时创建新的, 添加到stackView
         // 复用池不够时创建新的，并添加到stackView
         if reuseViews.count > 0 {
@@ -210,17 +258,28 @@ extension LabelListView {
             view.isHidden = false
             return view
         }
-        return TagView()
+        guard let clas = self.identifiers[identifier] else {
+            throw LabelListViewError.noRegisterLabel(identifier: identifier)
+        }
+        guard let viewClass = clas as? LabelReusable.Type else {
+            throw LabelListViewError.notSubclassOfUIView(identifier: identifier)
+        }
+        return viewClass.init()
     }
     
-    private func addView(_ view: TagView) {
+    private func addView(_ view: LabelReusable) {
         contentView.addSubview(view)
         view.translatesAutoresizingMaskIntoConstraints = false
-        displayViews.append(view)
+        let index = displayViews.lastIndex { tagView in
+            return tagView == view
+        }
+        if index == nil {
+            displayViews.append(view)
+        }
     }
     
     /// 往复用池中添加
-    private func appendReuseView(_ view: TagView) {
+    private func appendReuseView(_ view: LabelReusable) {
         view.removeFromSuperview()
         view.isHidden = true
         let index = displayViews.lastIndex { tagView in
@@ -231,6 +290,11 @@ extension LabelListView {
         }
         reuseViews.append(view)
     }
+}
+
+public enum LabelListViewError: Error {
+    case noRegisterLabel(identifier: String)
+    case notSubclassOfUIView(identifier: String)
 }
 
 struct WeakBox<T: AnyObject> {
@@ -278,7 +342,8 @@ class SizeObserver: NSObject {
             case .bounds:
                 let new = change?[.newKey] as? CGRect ?? .zero
                 let old = change?[.oldKey] as? CGRect ?? .zero
-                if keyPath == $0.keyPath, !old.size.equalTo(new.size) {
+                // 宽度改变时回调
+                if keyPath == $0.keyPath, old.size.width != new.size.width {
                     eventHandler(KeyPath.bounds(new))
                 }
             }
