@@ -42,7 +42,10 @@ class ExampleViewController: UIViewController {
 
 extension ExampleViewController: LabelListViewDataSource {
     func labelListView(_ lableListView: LabelListView, heightForRowAt index: Int) -> CGFloat {
-        return 50
+        if index == 2 {
+            return 50
+        }
+        return 100
     }
     
     func labelListView(_ labelListView: LabelListView, labelForItemAt index: Int) -> LabelReusable {

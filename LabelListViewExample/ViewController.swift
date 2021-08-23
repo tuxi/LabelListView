@@ -25,11 +25,11 @@ class ViewController: UITableViewController {
 
     var heights: [CGFloat] = []
     
-    lazy var cell: TableViewCell = {
-        let cell = TableViewCell(style: .default, reuseIdentifier: "TableViewCell1")
-        cell.contentView.widthAnchor.constraint(equalToConstant: UIScreen.main.bounds.size.width).with(priority: 1000).isActive = true
-        return cell
-    }()
+//    lazy var cell: TableViewCell = {
+//        let cell = TableViewCell(style: .default, reuseIdentifier: "TableViewCell1")
+//        cell.contentView.widthAnchor.constraint(equalToConstant: UIScreen.main.bounds.size.width).with(priority: 1000).isActive = true
+//        return cell
+//    }()
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -56,24 +56,24 @@ extension ViewController {
 
 extension ViewController {
     
+    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+
+        return UITableView.automaticDimension
+    }
+    
 //    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
 //
-//        return UITableView.automaticDimension
+//        if heights[indexPath.row] == 0 {
+//            cell.labels = models[indexPath.row]
+//            let size = cell.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
+//            heights[indexPath.row] = size.height
+//        }
+//        return heights[indexPath.row]
 //    }
-    
-    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        
-        if heights[indexPath.row] == 0 {
-            cell.labels = models[indexPath.row]
-            let size = cell.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
-            heights[indexPath.row] = size.height
-        }
-        return heights[indexPath.row]
-    }
     
     override func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
 
-        return 300
+        return 150
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
