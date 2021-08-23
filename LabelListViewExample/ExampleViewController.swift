@@ -48,8 +48,10 @@ extension ExampleViewController: LabelListViewDataSource {
     func labelListView(_ labelListView: LabelListView, labelForItemAt index: Int) -> LabelReusable {
         let label = try! labelListView.dequeueReusableLabel(ofType: Label.self, index: index)
         label.text = labels[index]
-        label.layer.cornerRadius = 12.5
+        label.layer.cornerRadius = 15
         label.backgroundColor = .orange
+        label.layer.masksToBounds = true
+        label.contentInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         return label
     }
     
