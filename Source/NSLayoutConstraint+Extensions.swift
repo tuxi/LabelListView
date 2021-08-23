@@ -12,6 +12,10 @@ public extension NSLayoutConstraint {
         self.priority = priority
         return self
     }
+    func with(priority: Float) -> NSLayoutConstraint {
+        self.priority = UILayoutPriority(priority)
+        return self
+    }
 }
 
 extension Array where Element: NSLayoutConstraint {

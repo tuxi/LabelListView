@@ -14,6 +14,13 @@ public protocol LabelReusable: UIView {
 public protocol LabelListViewDataSource: AnyObject {
     func labelListView(_ labelListView: LabelListView, labelForItemAt index: Int) -> LabelReusable
     func numberOfItems(in labelListView: LabelListView) -> Int
+    func labelListView(_ lableListView: LabelListView, heightForRowAt index: Int ) -> CGFloat
+}
+
+extension LabelListViewDataSource {
+   public func labelListView(_ lableListView: LabelListView, heightForRowAt index: Int ) -> CGFloat {
+        return -1
+    }
 }
 
 /// 一个可复用的自动换行的标签视图（使用自动布局，无需设置高度）
@@ -44,6 +51,9 @@ public class LabelListView: UIView {
         }
     }
     
+    /// 总行数，根据item的布局后的数据计算
+    public private(set) var numberOfRows: Int = 0
+    
     /// 在显示的标签
     private var displayViews = [LabelReusable]()
     /// 准备复用的标签
@@ -56,6 +66,8 @@ public class LabelListView: UIView {
     
     private var identifiers = [String: AnyClass]()
     
+    private var needsUpdateConstraints = true
+    
     public weak var dataSource: LabelListViewDataSource? {
         didSet {
             reloadData()
@@ -67,7 +79,7 @@ public class LabelListView: UIView {
         return view
     }()
     
-    lazy var stackView: UIStackView = {
+    public lazy var stackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .vertical
         return stackView
@@ -96,7 +108,7 @@ public class LabelListView: UIView {
         updateMyConstraints()
         
         sizeObserver = WeakBox(box: SizeObserver(target: self.stackView, eventHandler: { [weak self] kayPath in
-            self?.reloadDataIfNeeded()
+            self?.reloadData()
         }))
     }
     
@@ -116,7 +128,6 @@ public class LabelListView: UIView {
     
     public override func updateConstraints() {
         super.updateConstraints()
-        
         let contentWidth = self.stackView.frame.size.width
         if contentWidth <= 0 {
             return
@@ -124,9 +135,15 @@ public class LabelListView: UIView {
         
         prepareForReuse()
         
+        if !needsUpdateConstraints {
+            return
+        }
+        
         // 累计宽度
         var maxX: CGFloat = 0
-        // 记录上一个格子
+        /// 每一行的第一个item
+        var firstLabelOfRow: UIView?
+        /// 记录最后一个item
         var lastLabel: UIView?
         
         contentView.removeConstraints(labsConstraints)
@@ -135,42 +152,68 @@ public class LabelListView: UIView {
         /// 更新约束
         let count = dataSource!.numberOfItems(in: self)
        
+        var rowIndex = 0
         for index in 0..<count {
             let label = displayViews[index]
+            
             let labelSize = label.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
-            
-            label.layer.cornerRadius = labelSize.height * 0.5
-            label.backgroundColor = .red
-            
-            if let lastLabel = lastLabel, (maxX + labelSize.width + hSpacing) > contentWidth {
+            if let lastLabel = lastLabel, (maxX + labelSize.width + hSpacing) > contentWidth, let firstLabel = firstLabelOfRow {
                 // 换到下一行的第一个
+                rowIndex += 1
+                if let rowHeight = dataSource?.labelListView(self, heightForRowAt: rowIndex), rowHeight > 0 {
+                    labsConstraints.append(
+                        label.heightAnchor.constraint(equalToConstant: rowHeight)
+                    )
+                }
+                else {
+                    labsConstraints.append(
+                        label.heightAnchor.constraint(equalTo: firstLabel.heightAnchor)
+                    )
+                }
+                
                 labsConstraints.append(contentsOf: [
                     label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                    label.topAnchor.constraint(equalTo: lastLabel.bottomAnchor, constant: vSpacing),
+                    label.topAnchor.constraint(equalTo: firstLabel.bottomAnchor, constant: vSpacing),
                     // 上一行的最后一个label对其右侧进行约束
-                    lastLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor)
+                    lastLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
                 ])
                 maxX = labelSize.width
+                firstLabelOfRow = label
             } else {
                 // 继续在这一行
-                if let lastLabel = lastLabel {
+                if let lastLabel = lastLabel, let firstLabel = firstLabelOfRow {
                     // 同一行 第 2, 3, 4...个
                     labsConstraints.append(contentsOf: [
                         label.leadingAnchor.constraint(equalTo: lastLabel.trailingAnchor, constant: hSpacing),
-                        label.topAnchor.constraint(equalTo: lastLabel.topAnchor)
+                        label.topAnchor.constraint(equalTo: firstLabel.topAnchor),
+                        label.heightAnchor.constraint(equalTo: lastLabel.heightAnchor)
                     ])
                     maxX += labelSize.width + hSpacing
                 } else {
                     // 第一行第一个
+                    if let rowHeight = dataSource?.labelListView(self, heightForRowAt: rowIndex), rowHeight > 0 {
+                        labsConstraints.append(
+                            label.heightAnchor.constraint(equalToConstant: rowHeight)
+                        )
+                    }
                     labsConstraints.append(contentsOf: [
                         label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
                         label.topAnchor.constraint(equalTo: contentView.topAnchor)
                     ])
                     maxX = labelSize.width
+                    firstLabelOfRow = label
                 }
             }
             lastLabel = label
         }
+        
+        if count > 0 {
+            self.numberOfRows = rowIndex + 1
+        }
+        else {
+            self.numberOfRows = 0
+        }
+        print("总行数: \(self.numberOfRows)")
         
         if let lastLabel = displayViews.last {
             // 加上最后一个label的底部和右侧的约束
@@ -185,7 +228,7 @@ public class LabelListView: UIView {
                 contentView.heightAnchor.constraint(equalToConstant: 0)
             ])
         }
-        labsConstraints.activate()
+        contentView.addConstraints(labsConstraints)
     }
     
     /// 准备复用
@@ -203,14 +246,57 @@ public class LabelListView: UIView {
             }
         }
 
-//        var diff = labelsCount - displayCount
         for index in 0..<labelsCount {
             let label = dataSource!.labelListView(self, labelForItemAt: index)
             addView(label)
         }
-
+        
+        let diff = labelsCount - displayCount
+        let rowCount = getRowCount()
+        needsUpdateConstraints = (diff != 0 || rowCount != self.numberOfRows)
         let reuseCount = reuseViews.count
         print("待复用的数量reuseCount: \(reuseCount)")
+    }
+    
+    /// 计算总行数
+    private func getRowCount() -> Int {
+        let contentWidth = self.stackView.frame.size.width
+        if contentWidth <= 0 {
+            return 0
+        }
+        let count = dataSource!.numberOfItems(in: self)
+        /// 记录最后一个item
+        var lastLabel: UIView?
+        // 累计宽度
+        var maxX: CGFloat = 0
+        var rowIndex = 0
+        for index in 0..<count {
+            let label = displayViews[index]
+            
+            let labelSize = label.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
+            if let lastLabel = lastLabel, (maxX + labelSize.width + hSpacing) > contentWidth {
+                // 换到下一行的第一个
+                rowIndex += 1
+                maxX = labelSize.width
+            } else {
+                // 继续在这一行
+                if let lastLabel = lastLabel {
+                    // 同一行 第 2, 3, 4...个
+                    maxX += labelSize.width + hSpacing
+                } else {
+                    // 第一行第一个
+                    maxX = labelSize.width
+                }
+            }
+            lastLabel = label
+        }
+        
+        if count > 0 {
+            return rowIndex + 1
+        }
+        else {
+            return 0
+        }
     }
     
     private func updateMyConstraints() {
