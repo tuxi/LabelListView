@@ -31,6 +31,7 @@ class ExampleViewController: UIViewController {
         
         labelsView.dataSource = self
         labelsView.registerLabelClass(ofType: Label.self)
+        labelsView.maxRowCount = 2
         
         labelsView.contentInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         labelsView.stackView.backgroundColor = .blue
