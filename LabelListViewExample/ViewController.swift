@@ -11,8 +11,8 @@ import LabelListView
 class ViewController: UITableViewController {
     
     var models = [
-//        ["今天"],
-        ["今天", "明天", "我们的爱", "周杰伦", "无与伦比", "世界有你才好", "大岩姐姐", "Today at Swift", "杨孝远"],
+        ["今天"],
+        ["今天", "明天", "我们的爱", "周杰伦", "无与伦比", "世界有你才好", "大岩姐姐", "Today at Swift", "杨孝远", "数据啊山东科技拉升的李静啊可是大事的李静啊可是大事"],
         ["也可以的李静啊可是大事", "在大撒上大", "添加到大撒实打实的", "父视图萨达", "之后", "设置撒打算大", "数据啊山东科技拉升的李静啊可是大事的李静啊可是大事"],
         ["今天", "明天", "我们的爱", "周杰伦", "无与伦比", "世界有你才好", "大岩姐姐", "Today at Swift", "杨孝远"],
         ["今天", "明天", "我们的爱", "周杰伦", "无与伦比", "世界有你才好", "大岩姐姐", "Today at Swift", "杨孝远"],
@@ -25,11 +25,11 @@ class ViewController: UITableViewController {
 
     var heights: [CGFloat] = []
     
-//    lazy var cell: TableViewCell = {
-//        let cell = TableViewCell(style: .default, reuseIdentifier: "TableViewCell1")
-//        cell.contentView.widthAnchor.constraint(equalToConstant: UIScreen.main.bounds.size.width).with(priority: 1000).isActive = true
-//        return cell
-//    }()
+    lazy var cell: TableViewCell = {
+        let cell = TableViewCell(style: .default, reuseIdentifier: "TableViewCell1")
+        cell.contentView.widthAnchor.constraint(equalToConstant: UIScreen.main.bounds.size.width).with(priority: 1000).isActive = true
+        return cell
+    }()
     
     override func viewDidLoad() {
         super.viewDidLoad()

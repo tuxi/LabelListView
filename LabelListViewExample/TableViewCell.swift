@@ -18,6 +18,8 @@ class TableViewCell: UITableViewCell {
         }
     }
     
+    var reloadClosure: (() -> Void)?
+    
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         
@@ -30,7 +32,7 @@ class TableViewCell: UITableViewCell {
         
         labelsView.dataSource = self
         labelsView.registerLabelClass(ofType: Label.self)
-        
+        labelsView.numberOfRows = 3
         labelsView.contentInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         labelsView.stackView.backgroundColor = .blue
     }
@@ -49,7 +51,6 @@ class TableViewCell: UITableViewCell {
 
         // Configure the view for the selected state
     }
-
 }
 
 extension TableViewCell: LabelListViewDataSource {

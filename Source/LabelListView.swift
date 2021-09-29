@@ -52,14 +52,24 @@ public class LabelListView: UIView {
     }
     
     /// 最大行数
-    public var maxRowsCount: Int? {
+    public var numberOfRows: Int = 0 {
         didSet {
-            guard maxRowsCount != oldValue else {
+            guard numberOfRows != oldValue else {
                 return
             }
             setNeedsUpdateConstraints()
         }
     }
+    
+    /// 截断令牌，当超出最大行数时，为截断的部分标签添加的控件，需有宽高
+    public var truncationToken: UIView? {
+        didSet {
+            setNeedsUpdateConstraints()
+        }
+    }
+    
+    /// 最大宽度
+    public var maxWidthOfItem: CGFloat?
     
     /// 在显示的标签
     private var displayViews = [LabelReusable]()
@@ -76,6 +86,7 @@ public class LabelListView: UIView {
     private var identifiers = [String: AnyClass]()
     
     private var needsUpdateConstraints = true
+    private var lastContentWidth: CGFloat?
     
     public weak var dataSource: LabelListViewDataSource? {
         didSet {
@@ -123,7 +134,9 @@ public class LabelListView: UIView {
     
     /// 立即刷新数据，并立即布局，适用于数据改变立即更新布局的
     public func reloadDataIfNeeded() {
+        setNeedsUpdateConstraints()
         updateConstraintsIfNeeded()
+        setNeedsLayout()
         layoutIfNeeded()
     }
     
@@ -136,16 +149,17 @@ public class LabelListView: UIView {
     public override func updateConstraints() {
         super.updateConstraints()
         let contentWidth = self.stackView.frame.size.width
+        
         if contentWidth <= 0 {
             return
         }
         
         prepareForReuse()
-        
-        if !needsUpdateConstraints {
+        if !needsUpdateConstraints && lastContentWidth == contentWidth {
             return
         }
         
+        lastContentWidth = contentWidth
         /// 记录最后一个item
         var lastLabelOfLastRow: UIView?
         
@@ -210,6 +224,14 @@ public class LabelListView: UIView {
             labsConstraints.append(contentsOf: [
                 lastLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             ])
+            
+            if let truncationToken = truncationToken, truncationToken.isHidden == false {
+                contentView.addSubview(truncationToken)
+                truncationToken.translatesAutoresizingMaskIntoConstraints = false
+                contentView.removeConstraints(truncationToken.constraints)
+                truncationToken.leadingAnchor.constraint(equalTo: lastLabel.trailingAnchor, constant: hSpacing).isActive = true
+                truncationToken.centerYAnchor.constraint(equalTo: lastLabel.centerYAnchor).isActive = true
+            }
         }
         else {
             // 无内容时，让contentView 压缩为zero，以适应父视图的高度
@@ -217,7 +239,9 @@ public class LabelListView: UIView {
                 contentView.heightAnchor.constraint(equalToConstant: 0)
             ])
         }
+        
         contentView.addConstraints(labsConstraints)
+        
     }
     
     /// 准备复用
@@ -239,13 +263,13 @@ public class LabelListView: UIView {
             let label = dataSource!.labelListView(self, labelForItemAt: index)
             addView(label)
         }
-        
+        truncationToken?.isHidden = true
         let diff = labelsCount - displayCount
-        let lastNumberOfRows = rows.count
+        let lastRowCount = rows.count
         rows = remakeRows()
-        let numberOfRows = rows.count
+        let rowCount = rows.count
         /// 判断行数是否发生改变
-        needsUpdateConstraints = (diff != 0 || numberOfRows != lastNumberOfRows)
+        needsUpdateConstraints = (diff != 0 || rowCount != lastRowCount)
         let reuseCount = reuseViews.count
         print("待复用的数量reuseCount: \(reuseCount)")
     }
@@ -273,7 +297,8 @@ public class LabelListView: UIView {
                 // 换到下一行的第一个
                 rowIndex += 1
                 row = [LabelReusable]()
-                if let maxRowsCount = maxRowsCount, rowIndex > maxRowsCount - 1 {
+                if numberOfRows > 0, rowIndex > numberOfRows - 1 {
+                    onRowsTruncation(rows: &rows)
                     break
                 }
                 maxX = labelSize.width
@@ -298,6 +323,34 @@ public class LabelListView: UIView {
         }
         print("总行数: \(rows.count)")
         return rows
+    }
+    
+    /// 当发生截断时，重置最后一行
+    private func onRowsTruncation(rows: inout [[LabelReusable]]) {
+        guard let truncationToken = truncationToken, let lastRow = rows.last else {
+            return
+        }
+        var contentWidth = self.stackView.frame.size.width
+        truncationToken.isHidden = false
+        let truncationTokenSize = truncationToken.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
+        contentWidth -= (truncationTokenSize.width - hSpacing)
+        var row = [LabelReusable]()
+        var maxX: CGFloat = 0
+        lastRow.forEach { label in
+            label.removeFromSuperview()
+        }
+        for index in 0..<lastRow.count {
+            let label = lastRow[index]
+            let labelSize = label.systemLayoutSizeFitting(UIView.layoutFittingExpandedSize)
+            if (maxX + labelSize.width + hSpacing) > contentWidth {
+                break
+            }
+            row.append(label)
+            contentView.addSubview(label)
+            maxX += labelSize.width + hSpacing
+        }
+        rows.removeLast()
+        rows.append(row)
     }
     
     private func updateContentConstraints() {
